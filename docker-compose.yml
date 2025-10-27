@@ -4,6 +4,59 @@ services:
   web:
     build:
       context: ./web
+    environment:
+      # Rutas relativas para que el proxy maneje todo
+      VITE_API_BASE: /api
+      VITE_STREAM_BASE: /stream
+      VITE_HUB_URL: /hub/rooms
+    expose:
+      - "80"
+    depends_on:
+      api:
+        condition: service_healthy
+      stream:
+        condition: service_started
+    networks:
+      - appnet
+
+  api:
+    build:
+      context: ./api
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      Mongo__ConnectionString: mongodb://mongo:27017
+      Mongo__Database: jukebox
+      Redis__ConnectionString: redis:6379
+      Stream__BaseUrl: http://stream:4000
+      CorsOrigin: http://localhost
+    expose:
+      - "8080"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - appnet
+
+  stream:
+    build:
+      context: ./stream
+    environment:
+      PORT: 4000
+      SEARCH_LIMIT: 10
+    expose:
+      - "4000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - appnet
 
@@ -11,9 +64,41 @@ services:
     build:
       context: ./proxy
     ports:
-      - "1080:80"
+      - "80:80"
     depends_on:
-      - web
+      web:
+        condition: service_started
+      api:
+        condition: service_healthy
+      stream:
+        condition: service_started
+    networks:
+      - appnet
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand({ ping: 1 })"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - appnet
 
   redis:
     image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - appnet
+
+networks:
+  appnet:
+
+volumes:
+  mongo-data:

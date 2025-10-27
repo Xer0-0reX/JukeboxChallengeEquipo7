@@ -77,6 +77,8 @@ if (app.Environment.IsDevelopment())
 
 app.MapControllers();
 app.MapHub<RoomHub>(RoomHub.HubPath);
+// Simple health endpoint for container healthcheck
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.Run();
 
